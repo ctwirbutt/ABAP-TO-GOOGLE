@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="utf-8"?>
+<nugget name="NUGG_ABAP_TO_GOOGLE_POSTS">
+ <FUGR AREA="ZGOOGLE_STUFF" SPRAS="E" AREAT="Google related stuff (fusion tables etc)">
+  <functionGroupDocumentation/>
+  <mainprogram NAME="SAPLZGOOGLE_STUFF" VARCL="X" DBAPL="S" DBNA="D$" SUBC="F" APPL="S" RMAND="020" RLOAD="E" FIXPT="X" LDBNAME="D$S" UCCHECK="X">
+   <textPool/>
+   <source>*******************************************************************
+*   System-defined Include-files.                                 *
+*******************************************************************
+  INCLUDE LZGOOGLE_STUFFTOP.                 &quot; Global Data
+  INCLUDE LZGOOGLE_STUFFUXX.                 &quot; Function Modules
+
+*******************************************************************
+*   User-defined Include-files (if necessary).                    *
+*******************************************************************
+* INCLUDE LZGOOGLE_STUFFF...                 &quot; Subroutines
+* INCLUDE LZGOOGLE_STUFFO...                 &quot; PBO-Modules
+* INCLUDE LZGOOGLE_STUFFI...                 &quot; PAI-Modules
+* INCLUDE LZGOOGLE_STUFFE...                 &quot; Events
+* INCLUDE LZGOOGLE_STUFFP...                 &quot; Local class implement.</source>
+  </mainprogram>
+  <includeprograms>
+   <include NAME="LZGOOGLE_STUFFTOP" VARCL="X" DBAPL="S" DBNA="D$" SUBC="I" APPL="S" RMAND="020" FIXPT="X" LDBNAME="D$S" UCCHECK="X">
+    <include_source>FUNCTION-POOL ZGOOGLE_STUFF.                &quot;MESSAGE-ID ..
+
+* INCLUDE LZGOOGLE_STUFFD...                 &quot; Local class definition</include_source>
+   </include>
+  </includeprograms>
+  <functionmodules>
+   <functionmodule NAME="ZGET_GOOGLE_ACCESS_TOKEN" STEXT="Get Google Access Token using Refresh Token">
+    <importing PARAMETER="CLIENT_ID" TYP="LOCALFILE"/>
+    <importing PARAMETER="CLIENT_SECRET" TYP="LOCALFILE"/>
+    <importing PARAMETER="REFRESH_TOKEN" TYP="LOCALFILE"/>
+    <exporting PARAMETER="HTTP_RETURN_CODE" REFERENCE="X" TYP="I"/>
+    <exporting PARAMETER="HTTP_RETURN_DESCR" REFERENCE="X" TYP="STRING"/>
+    <exporting PARAMETER="HTTP_RETURN_DESCR_LONG" REFERENCE="X" TYP="XSTRING"/>
+    <exporting PARAMETER="ACCESS_TOKEN" REFERENCE="X" TYP="LOCALFILE"/>
+    <exporting PARAMETER="TOKEN_EXPIRE_SECONDS" REFERENCE="X" TYP="CHAR10"/>
+    <documentation PARAMETER="CLIENT_ID" KIND="P" STEXT="Client Id" INDEX=" 001"/>
+    <documentation PARAMETER="CLIENT_SECRET" KIND="P" STEXT="Client Secret" INDEX=" 002"/>
+    <documentation PARAMETER="REFRESH_TOKEN" KIND="P" STEXT="Refresh Token" INDEX=" 003"/>
+    <documentation PARAMETER="HTTP_RETURN_CODE" KIND="P" STEXT="HTTP Return Code (200 = OK)" INDEX=" 004"/>
+    <documentation PARAMETER="HTTP_RETURN_DESCR" KIND="P" STEXT="HTTP Return Description" INDEX=" 005"/>
+    <documentation PARAMETER="HTTP_RETURN_DESCR_LONG" KIND="P" STEXT="HTTP Return Description Long" INDEX=" 006"/>
+    <documentation PARAMETER="ACCESS_TOKEN" KIND="P" STEXT="Access Token" INDEX=" 007"/>
+    <documentation PARAMETER="TOKEN_EXPIRE_SECONDS" KIND="P" STEXT="# of Seconds Token Good for" INDEX=" 008"/>
+    <fm_source_new>************************************************************************
+* Objects/Classes/Interfaces, etc:
+  DATA: http_client  TYPE REF TO if_http_client .
+
+
+************************************************************************
+* Structures:
+  DATA: W_HTTP_ERROR_DESCR      TYPE STRING,
+        W_HTTP_ERROR_DESCR_LONG TYPE XSTRING.
+  DATA: W_HTTP_RETURN_CODE  TYPE I.
+
+  TYPES: BEGIN OF T_RESULT,
+         STR(200),
+         END   OF T_RESULT.
+
+  DATA: ITAB_RESULT TYPE TABLE OF T_RESULT WITH HEADER LINE.
+  DATA: L_ACCESS_TOKEN_STR_FOUND TYPE BOOLE_D,
+        L_EXPIRE_STR_FOUND       TYPE BOOLE_D.
+
+
+************************************************************************
+* Variables:
+  DATA: W_URL             TYPE string,
+        W_XML_RESULT_STR  TYPE string.
+  DATA: L_XML_RESULT_XSTR TYPE XSTRING.
+
+  DATA: W_CDATA TYPE STRING.
+  data: l_content_length_value type I.
+
+  DATA: W_STRLEN TYPE I.
+
+
+
+  CLEAR: HTTP_RETURN_CODE,
+         HTTP_RETURN_DESCR,
+         HTTP_RETURN_DESCR_LONG,
+         ACCESS_TOKEN,
+         TOKEN_EXPIRE_SECONDS.
+
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Create the HTTP_CLIENT using URL :
+  W_URL = &apos;https://accounts.google.com/o/oauth2/token&apos;.
+
+** Create the HTTP client using the Google API URL:
+  CALL METHOD cl_http_client=&gt;create_by_url
+    EXPORTING
+      url                = W_URL
+    IMPORTING
+      client             = http_client
+    EXCEPTIONS
+      argument_not_found = 1
+      plugin_not_active  = 2
+      internal_error     = 3
+      OTHERS             = 4.
+
+
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Set up the HTTP Post to Google&apos;s API URL:
+  CALL METHOD http_client-&gt;request-&gt;set_method
+    EXPORTING
+      method = &apos;POST&apos;.
+
+  CALL METHOD http_client-&gt;request-&gt;set_version
+    EXPORTING
+*     version = &apos;1001&apos;.
+*     version = if_http_request=&gt;co_protocol_version_1_1.   &quot; 1.1
+      version = if_http_request=&gt;co_protocol_version_1_0.   &quot; 1.0
+
+
+  http_client-&gt;request-&gt;set_header_field(
+      name = &apos;Content-Type&apos;
+      value = &apos;application/x-www-form-urlencoded&apos;
+      ).
+
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Body of POST Request (SET_CDATA) and Content Length:
+  CONCATENATE &apos;client_id=&apos;     CLIENT_ID     &apos;&amp;&apos;
+              &apos;client_secret=&apos; CLIENT_SECRET &apos;&amp;&apos;
+              &apos;refresh_token=&apos; REFRESH_TOKEN &apos;&amp;&apos;
+              &apos;grant_type=refresh_token&apos;
+         INTO W_CDATA.
+
+  l_content_length_value = STRLEN( W_CDATA ).
+
+*    http_client-&gt;request-&gt;set_form_fields( FIELDS = it_form_fields ).
+  CALL METHOD http_client-&gt;REQUEST-&gt;IF_HTTP_ENTITY~SET_CDATA
+    EXPORTING
+      DATA   = W_CDATA
+      LENGTH = l_content_length_value
+      offset = 0.
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+* Send the HTTP Post to the URL / Google&apos;s API:
+  CALL METHOD http_client-&gt;send
+    EXPORTING
+      timeout                    = 15   &quot; 15 Seconds
+    EXCEPTIONS
+      http_communication_failure = 1
+      http_invalid_state         = 2.
+
+* Disable SAP&apos;s pop-up for user id and password:
+  http_client-&gt;propertytype_logon_popup = http_client-&gt;co_disabled.    &quot;  POPUP for user id and pwd
+
+
+*Read the Response from Google:
+  CALL METHOD http_client-&gt;receive
+    EXCEPTIONS
+      http_communication_failure = 1
+      http_invalid_state         = 2
+      http_processing_failed     = 3.
+
+* Get the HTTP return code from the HTTP POST:
+  http_client-&gt;response-&gt;get_status( IMPORTING code   = W_HTTP_RETURN_CODE ).
+  http_client-&gt;response-&gt;get_status( IMPORTING reason = W_HTTP_ERROR_DESCR ).
+
+* http_client-&gt;response-&gt;GET_RAW_MESSAGE( IMPORTING data = W_HTTP_ERROR_DESCR_LONG ).
+  W_HTTP_ERROR_DESCR_LONG = http_client-&gt;response-&gt;GET_RAW_MESSAGE( ).
+* Write the HTTP Return Code / Description to the screen:
+  WRITE:/ &apos;HTTP return Code/Description:&apos;,  W_HTTP_RETURN_CODE no-gap, &apos;/&apos; no-gap, W_HTTP_ERROR_DESCR.
+  skip 1.
+
+* Refresh the Request after each POST:
+  CALL METHOD http_client-&gt;refresh_request(
+    EXCEPTIONS
+      http_action_failed = 1
+      others             = 2 ).
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Write the data received back from the POST to the screen:
+  CLEAR W_XML_RESULT_STR.
+  W_XML_RESULT_STR = http_client-&gt;response-&gt;get_cdata( ).
+
+
+  sy-tmaxl = strlen( W_XML_RESULT_STR ).
+  FIELD-SYMBOLS: &lt;FS&gt;.
+  ASSIGN W_XML_RESULT_STR TO &lt;FS&gt;.
+*  WRITE:/ &lt;FS&gt;(SY-TMAXL).
+
+  HTTP_RETURN_CODE       = W_HTTP_RETURN_CODE.
+  HTTP_RETURN_DESCR      = W_HTTP_ERROR_DESCR.
+  HTTP_RETURN_DESCR_LONG = W_XML_RESULT_STR.
+
+  SPLIT W_XML_RESULT_STR AT &apos;&quot;&apos; INTO TABLE ITAB_RESULT.
+  CLEAR: L_ACCESS_TOKEN_STR_FOUND,
+         L_EXPIRE_STR_FOUND.
+  LOOP AT ITAB_RESULT.
+    CASE ITAB_RESULT-STR.
+      WHEN &apos;access_token&apos;.
+        L_ACCESS_TOKEN_STR_FOUND = ABAP_TRUE.
+      WHEN &apos;expires_in&apos;.
+        L_EXPIRE_STR_FOUND       = ABAP_TRUE.
+      WHEN OTHERS.
+        IF L_ACCESS_TOKEN_STR_FOUND EQ ABAP_TRUE AND ACCESS_TOKEN IS INITIAL.
+          W_STRLEN = STRLEN( ITAB_RESULT-STR ).
+          IF W_STRLEN &gt; 30.
+            ACCESS_TOKEN = ITAB_RESULT-STR.
+          ENDIF.
+        ENDIF.
+
+        IF L_EXPIRE_STR_FOUND EQ ABAP_TRUE AND TOKEN_EXPIRE_SECONDS IS INITIAL AND ITAB_RESULT-STR CS &apos;0&apos;.
+          REPLACE &apos;:&apos; WITH SPACE INTO ITAB_RESULT-STR.
+          REPLACE &apos;#&apos; WITH SPACE INTO ITAB_RESULT-STR.
+          REPLACE &apos;}&apos; WITH SPACE INTO ITAB_RESULT-STR.
+          SHIFT ITAB_RESULT-STR BY 1 PLACES RIGHT CIRCULAR.
+          WHILE ITAB_RESULT-STR(1) EQ SPACE.
+            SHIFT ITAB_RESULT-STR BY 1 PLACES RIGHT CIRCULAR.
+          ENDWHILE.
+          ITAB_RESULT-STR(1) = &apos; &apos;.
+          SHIFT ITAB_RESULT-STR LEFT DELETING LEADING SPACE.
+          TOKEN_EXPIRE_SECONDS = ITAB_RESULT-STR.
+        ENDIF.
+    ENDCASE.
+  ENDLOOP.
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Clean-Up ....
+  IF W_HTTP_RETURN_CODE EQ 200. &quot; ok
+* Close the HTTP connection:
+    http_client-&gt;close( ).
+  ELSE.
+    MESSAGE S005(ZR) WITH &apos;Error: Return code = &apos; W_HTTP_RETURN_CODE.
+  ENDIF.</fm_source_new>
+    <functionModuleDocumentation/>
+   </functionmodule>
+   <functionmodule NAME="ZUPDATE_GOOGLE_FUSION_TABLE" STEXT="Update Google Fusion Table (Insert, Update, Delete...)">
+    <importing PARAMETER="ACCESS_TOKEN" TYP="LOCALFILE"/>
+    <importing PARAMETER="SQL" TYP="CHAR255"/>
+    <importing PARAMETER="TRY_N_TIMES" DEFAULT="1" OPTIONAL="X" TYP="NUMC1"/>
+    <exporting PARAMETER="HTTP_RETURN_CODE" REFERENCE="X" TYP="I"/>
+    <exporting PARAMETER="HTTP_RETURN_DESCR" REFERENCE="X" TYP="STRING"/>
+    <exporting PARAMETER="HTTP_RETURN_DESCR_LONG" REFERENCE="X" TYP="XSTRING"/>
+    <documentation PARAMETER="ACCESS_TOKEN" KIND="P" STEXT="Access Token" INDEX=" 001"/>
+    <documentation PARAMETER="SQL" KIND="P" STEXT="Google Fusion SQL Stmt with %&apos;s" INDEX=" 002"/>
+    <documentation PARAMETER="TRY_N_TIMES" KIND="P" STEXT="# of times to try if an HTTP error occurs" INDEX=" 003"/>
+    <documentation PARAMETER="HTTP_RETURN_CODE" KIND="P" STEXT="HTTP Return Code (200 = OK)" INDEX=" 004"/>
+    <documentation PARAMETER="HTTP_RETURN_DESCR" KIND="P" STEXT="HTTP Return Description" INDEX=" 005"/>
+    <documentation PARAMETER="HTTP_RETURN_DESCR_LONG" KIND="P" STEXT="HTTP Return Description Long" INDEX=" 006"/>
+    <fm_source_new>tables: ZGOOGLE_USAGE.
+
+CONSTANTS: C_FUSION_TABLES TYPE ZGOOGUSAGETYP VALUE &apos;F&apos;.
+
+************************************************************************
+* Objects/Classes/Interfaces, etc:
+  DATA: http_client  TYPE REF TO if_http_client .
+
+************************************************************************
+* Structures:
+  DATA: W_HTTP_ERROR_DESCR      TYPE STRING,
+        W_HTTP_ERROR_DESCR_LONG TYPE XSTRING.
+  DATA: W_HTTP_RETURN_CODE  TYPE I.
+
+  data: w_sql like sql,
+        w_sql_len_n(5) type n,
+        w_sql_len_c    type STRING,
+        W_CONTENT_LEN_STR(50).
+  DATA: W_ACCESS_TOKEN_POST_STR_LCASE TYPE LOCALFILE,
+        W_ACCESS_TOKEN_POST_STRING TYPE STRING.
+
+  DATA: W_NUM_TRIES_COUNT TYPE I.
+
+************************************************************************
+* Variables:
+  DATA: W_URL             TYPE string,
+        W_XML_RESULT_STR  TYPE string.
+  DATA: L_XML_RESULT_XSTR TYPE XSTRING.
+
+  DATA: SQL_WITHOUT_ESCAPE_CHARS TYPE STRING,
+        SQL_WITH_ESCAPE_CHARS    TYPE STRING.
+
+
+************************************************************************
+  IF TRY_N_TIMES IS INITIAL.
+    TRY_N_TIMES = 1.
+  ENDIF.
+  W_NUM_TRIES_COUNT = 0.
+
+  W_SQL = SQL.
+  IF W_SQL CS &apos;%20&apos;.
+    &quot;do nothing since it already has escape characters in it
+  ELSE.
+* Add escape Characters (e.g. %20 for spaces, etc.) :
+    SQL_WITHOUT_ESCAPE_CHARS = W_SQL.
+    CALL METHOD cl_http_client=&gt;if_http_client~escape_url
+      EXPORTING
+        unescaped = SQL_WITHOUT_ESCAPE_CHARS
+      RECEIVING
+        escaped   = SQL_WITH_ESCAPE_CHARS.
+    W_SQL = SQL_WITH_ESCAPE_CHARS.
+  ENDIF.
+  CONCATENATE &apos;sql=&apos; W_SQL INTO W_SQL.
+
+
+  CONCATENATE &apos;https://www.googleapis.com/fusiontables/v1/query?&apos;                                                            &quot; GOOGLE API URL
+              w_sql             &quot; GOOGLE API SQL INSERT STATEMENT
+         INTO W_URL.
+
+
+
+** Create the HTTP client using the Google API URL:
+  CALL METHOD cl_http_client=&gt;create_by_url
+    EXPORTING
+      url                = W_URL
+    IMPORTING
+      client             = http_client
+    EXCEPTIONS
+      argument_not_found = 1
+      plugin_not_active  = 2
+      internal_error     = 3
+      OTHERS             = 4.
+
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Set up the HTTP Post to Google&apos;s API URL:
+  CALL METHOD http_client-&gt;request-&gt;set_method
+    EXPORTING
+      method = &apos;POST&apos;.
+
+  CALL METHOD http_client-&gt;request-&gt;set_version
+    EXPORTING
+*     version = &apos;1001&apos;.
+*     version = if_http_request=&gt;co_protocol_version_1_1.   &quot; 1.1
+      version = if_http_request=&gt;co_protocol_version_1_0.   &quot; 1.0
+
+
+  http_client-&gt;request-&gt;set_header_field(
+      name = &apos;Content-Type&apos;
+      value = &apos;application/x-www-form-urlencoded&apos;
+      ).
+
+  w_sql_len_n = strlen( w_sql ).
+  w_sql_len_c = w_sql_len_n.
+  shift w_sql_len_c left DELETING LEADING &apos;0&apos;.
+
+
+  http_client-&gt;request-&gt;set_header_field(
+      name = &apos;Content-Length&apos;
+      value = w_sql_len_c
+      ).
+
+
+
+  http_client-&gt;request-&gt;set_header_field(
+    name = &apos;host&apos;
+    value = &apos;www.googleapis.com&apos;
+    ).
+
+
+  CONCATENATE &apos;Bearer&apos; ACCESS_TOKEN INTO W_ACCESS_TOKEN_POST_STR_LCASE SEPARATED BY SPACE.
+  W_ACCESS_TOKEN_POST_STRING = W_ACCESS_TOKEN_POST_STR_LCASE.
+  http_client-&gt;request-&gt;set_header_field(
+    name = &apos;authorization&apos;
+    value = W_ACCESS_TOKEN_POST_STRING
+    ).
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Body of POST Request:
+**** http POST form_fields
+  data: it_form_fields type TIHTTPNVP,
+        wa_form_fields like line of it_form_fields.
+
+  wa_form_fields-name  = &apos;&apos;.
+  wa_form_fields-value = W_SQL.
+  append wa_form_fields to it_form_fields.
+  clear wa_form_fields.
+
+
+  http_client-&gt;request-&gt;set_form_fields( FIELDS = it_form_fields ).
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+  DO TRY_N_TIMES TIMES.
+    ADD 1 TO W_NUM_TRIES_COUNT.
+
+* Send the HTTP Post to the URL / Google&apos;s API:
+    CALL METHOD http_client-&gt;send
+      EXPORTING
+        timeout                    = 15   &quot; 15 Seconds
+      EXCEPTIONS
+        http_communication_failure = 1
+        http_invalid_state         = 2.
+
+    http_client-&gt;propertytype_logon_popup = http_client-&gt;co_disabled.    &quot;  POPUP for user id and pwd
+
+
+*Read the Response from Google:
+    CALL METHOD http_client-&gt;receive
+      EXCEPTIONS
+        http_communication_failure = 1
+        http_invalid_state         = 2
+        http_processing_failed     = 3.
+
+* Get the HTTP return code from the HTTP POST:
+    http_client-&gt;response-&gt;get_status( IMPORTING code   = W_HTTP_RETURN_CODE ).
+    http_client-&gt;response-&gt;get_status( IMPORTING reason = W_HTTP_ERROR_DESCR ).
+
+    IF W_HTTP_RETURN_CODE EQ &apos;200&apos;.
+      SELECT SINGLE * FROM ZGOOGLE_USAGE WHERE USAGE_DATE EQ SY-DATUM AND USAGE_TYPE EQ C_FUSION_TABLES.
+      IF SY-SUBRC EQ 0.
+        ADD 1 TO ZGOOGLE_USAGE-USAGE_COUNT.
+      ELSE.
+        ZGOOGLE_USAGE-USAGE_DATE  = SY-DATUM.
+        ZGOOGLE_USAGE-USAGE_TYPE  = C_FUSION_TABLES.
+        ZGOOGLE_USAGE-USAGE_COUNT = 1.
+      ENDIF.
+      MODIFY ZGOOGLE_USAGE.
+      COMMIT WORK AND WAIT.
+      EXIT. &quot; DO LOOP
+    ELSE.
+      IF W_NUM_TRIES_COUNT EQ TRY_N_TIMES.
+        &quot; Do not wait if this is the last attempt
+      ELSE.
+        WAIT UP TO 2 SECONDS.
+**~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+** Refresh the Request after each POST:
+*        CALL METHOD http_client-&gt;refresh_request(
+*          EXCEPTIONS
+*            http_action_failed = 1
+*            others             = 2 ).
+*        http_client-&gt;close( ).
+**~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        CONTINUE. &quot; Next DO Loop
+      ENDIF.
+    ENDIF.
+  ENDDO.
+
+* http_client-&gt;response-&gt;GET_RAW_MESSAGE( IMPORTING data = W_HTTP_ERROR_DESCR_LONG ).
+  W_HTTP_ERROR_DESCR_LONG = http_client-&gt;response-&gt;GET_RAW_MESSAGE( ).
+* Write the HTTP Return Code / Description to the screen:
+*  WRITE:/ &apos;HTTP return Code/Description:&apos;,  W_HTTP_RETURN_CODE no-gap, &apos;/&apos; no-gap, W_HTTP_ERROR_DESCR.
+*  skip 1.
+
+* Refresh the Request after each POST:
+  CALL METHOD http_client-&gt;refresh_request(
+    EXCEPTIONS
+      http_action_failed = 1
+      others             = 2 ).
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Get the data received back from the POST:
+  CLEAR W_XML_RESULT_STR.
+  W_XML_RESULT_STR = http_client-&gt;response-&gt;get_cdata( ).
+
+
+  sy-tmaxl = strlen( W_XML_RESULT_STR ).
+  FIELD-SYMBOLS: &lt;FS&gt;.
+  ASSIGN W_XML_RESULT_STR TO &lt;FS&gt;.
+
+  HTTP_RETURN_CODE       = W_HTTP_RETURN_CODE.
+  HTTP_RETURN_DESCR      = W_HTTP_ERROR_DESCR.
+  HTTP_RETURN_DESCR_LONG = &lt;FS&gt;(SY-TMAXL).
+
+*  WRITE:/ &lt;FS&gt;(SY-TMAXL).
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+* Check if we got back an HTTP Error:
+  IF W_HTTP_RETURN_CODE EQ 200. &quot; ok
+* Close the HTTP connection:
+    http_client-&gt;close( ).
+  ELSE.
+    MESSAGE S005(ZR) WITH &apos;Error: Return code = &apos; W_HTTP_RETURN_CODE.
+  ENDIF.</fm_source_new>
+    <functionModuleDocumentation/>
+   </functionmodule>
+  </functionmodules>
+ </FUGR>
+</nugget>
