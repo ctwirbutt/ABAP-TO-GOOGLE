@@ -18,8 +18,8 @@ PreRequisites:
 2) Enable your API access on Google's API Console
 3) Use OAuth2.0 Google Playground to obtain a Refresh token
 
-I will have a link in the near future by my colleague Forrest Horner which will explain how to 
-set up the 3 PreRequisite steps above!
+The following is a GREAT Video produced by my colleague Forrest Horner on the overall process including setting up the 3 PreRequisite Steps above:
+http://youtu.be/uDgTxiR00cY
 
 I am working on getting a Nugget File uploaded to this Repository so if you are reading this and there is no
 NUGG (Nugget) file yet...     ...stay tuned it is coming very soon !!
