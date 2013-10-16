@@ -17,7 +17,7 @@ PreRequisites:
 
 1) Set up a Google Account for your organization,
 
-  1.1 Create a Fusion Table under this account
+      1.1 Create a Fusion Table under this account
   
 2) Enable your API access on Google's API Console
 
@@ -28,7 +28,9 @@ The following is a GREAT Video produced by my colleague Forrest Horner on the ov
 http://youtu.be/uDgTxiR00cY
 
 
-I am working on getting a Nugget File uploaded to this Repository so if you are reading this and there is no
-NUGG (Nugget) file yet...     ...stay tuned it is coming very soon !!
+Please see my NUGG (SAPLink Nugget) file for the source code of both Function Modules.
+
+For those who do not know how to open SAPLink Nugget files here is a good link for information, download, etc.. :
+http://wiki.scn.sap.com/wiki/display/ABAP/SAPlink
 
 
